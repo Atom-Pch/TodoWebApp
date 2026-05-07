@@ -10,21 +10,15 @@ terraform {
 }
 
 provider "aws" {
-  alias = "dummy"
-}
-
-resource "aws_servicecatalogappregistry_application" "todo_app" {
-  provider    = aws.dummy
-  name        = "todo-app-for-devops"
-  description = "Todo web application managed by Terraform"
-}
-
-provider "aws" {
   region  = var.aws_region
   profile = var.aws_profile
 
   default_tags {
-    tags = aws_servicecatalogappregistry_application.todo_app.application_tag
+    tags = {
+      Environment = "Practice"
+      ManagedBy   = "Terraform"
+      Project     = "TodoApp"
+    }
   }
 }
 
@@ -82,4 +76,17 @@ module "storage" {
 
   aws_region = var.aws_region
   alb_dns    = module.load_balancer.alb_dns
+}
+
+module "lambda" {
+  source = "./lambda"
+
+  todo_cluster_arn = module.container.todo_cluster_arn
+  todo_cluster_name = module.container.todo_cluster_name
+  frontend_repo_name = module.container.frontend_repo_name
+  frontend_service_name = module.container.frontend_service_name
+  backend_repo_name = module.container.backend_repo_name
+  backend_service_name = module.container.backend_service_name
+  frontend_service_arn = module.container.frontend_service_arn
+  backend_service_arn = module.container.backend_service_arn
 }

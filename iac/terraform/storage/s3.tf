@@ -12,21 +12,23 @@ module "todo_bucket" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 
-  cors_rule = [
-    {
-      allowed_headers = ["*"],
-      allowed_methods = ["GET", "PUT", "DELETE"],
-      allowed_origins = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://${var.alb_dns}",
-        "https://onlytodo.xyz"
-      ],
-      max_age_seconds = 3600
-    }
-  ]
-
   force_destroy = true
+}
+
+resource "aws_s3_bucket_cors_configuration" "this" {
+  bucket = module.todo_bucket.s3_bucket_id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "DELETE"]
+    allowed_origins = [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "http://${var.alb_dns}",
+      "https://onlytodo.xyz"
+    ]
+    max_age_seconds = 3600
+  }
 }
 
 module "env_bucket" {

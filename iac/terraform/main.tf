@@ -40,7 +40,7 @@ module "database" {
 }
 
 module "load_balancer" {
-  source = "./load_balancer"
+  source = "./load-balancer"
 
   vpc            = module.networks.vpc
   public_subnets = module.networks.pubic_subnets

@@ -48,7 +48,7 @@ run_playwright_tests:
   artifacts:
     when: always
     paths:
-      - frontend/cicd_test-report # Saves test results so you can view them in GitLab
+      - frontend/test-results/ # Saves test results so you can view them in GitLab
     expire_in: 1 day
 
 # ---------------------------------------------------------

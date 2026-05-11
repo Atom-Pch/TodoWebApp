@@ -95,7 +95,7 @@ func (app *App) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
-	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (any, error) {
 		return jwtSecret, nil
 	})
 

@@ -25,7 +25,7 @@ type App struct {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Warning: Error loading .env file (ignoring if variables are set in environment)")
+		log.Println("Warning: Error loading .env file (ignoring if variables are set in environment): " + err.Error())
 	}
 
 	// 1. Initialize Database

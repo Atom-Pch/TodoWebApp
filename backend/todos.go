@@ -183,5 +183,5 @@ func (app *App) deleteTodo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Write([]byte(`{"message": "To-Do '` + todoTitle + `' deleted successfully"}`))
+	w.Write([]byte(`{"message": "Task '` + todoTitle + `' deleted successfully"}`))
 }

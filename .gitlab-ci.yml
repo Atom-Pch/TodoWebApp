@@ -58,7 +58,7 @@ build_and_push_images_latest:
   stage: img_push
   image: docker:29.4.1-alpine3.23
   services:
-    - docker:29.4.1-alpine3.23-dind
+    - docker:29.4.1-dind-alpine3.23
   <<: *aws_oidc_auth
   script:
     - apk add --no-cache aws-cli

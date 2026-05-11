@@ -4,14 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
+	"net/http"
+	"os"
 )
 
 // App holds our external dependencies so all our routes can access them
@@ -87,6 +87,10 @@ func main() {
 	mux.HandleFunc("DELETE /api/todos/{id}", app.requireAuth(app.deleteTodo))
 	mux.HandleFunc("GET /api/todos/s3-presign", app.requireAuth(app.presignS3))
 
+	// Expose Prometheus Metrics ---
+	// Notice we DO NOT wrap this in requireAuth, because Prometheus needs to read it without a login!
+	mux.Handle("GET /metrics", promhttp.Handler())
+
 	// 5. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -94,5 +98,6 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s...\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(mux)))
+	// --- NEW: Wrap the mux in BOTH corsMiddleware and metricsMiddleware ---
+	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(metricsMiddleware(mux))))
 }

@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"net/http"
 	"os"
 	"regexp"
 	"slices"
-
-	"github.com/golang-jwt/jwt/v5"
+	"strconv"
+	"time"
 )
 
 type contextKey string
@@ -21,6 +24,34 @@ var localhost_origin = []string{
 	"http://localhost:5173",
 	"http://localhost:3000",
 	"https://onlytodo.xyz",
+}
+
+// Define the Prometheus Metrics
+var (
+	// Records how long requests take (Histogram)
+	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_request_duration_seconds",
+		Help:    "Duration of HTTP requests.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method", "path"})
+
+	// Records the total number of requests (Counter)
+	httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total number of HTTP requests.",
+	}, []string{"method", "path", "status"})
+)
+
+// Create a custom ResponseWriter to capture the status code
+// Standard http.ResponseWriter doesn't let us read the status code after it's written!
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
 }
 
 // Global Middleware for CORS
@@ -86,4 +117,31 @@ func (app *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		next.ServeHTTP(w, reqWithContext)
 	}
+}
+
+// 3. The Metrics Middleware
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Wrap the response writer and default to 200 OK
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+
+		// Pass the request to the next handler (the actual API logic)
+		next.ServeHTTP(sw, r)
+
+		// Calculate how long the request took
+		duration := time.Since(start).Seconds()
+
+		// Extract the path (e.g., "/api/todos")
+		path := r.URL.Path
+
+		// DevOps Note: If you have URLs with IDs like /api/todos/5, it's best practice
+		// to strip the ID and log it as "/api/todos/{id}" to avoid high cardinality in Prometheus.
+		// For this simple app, logging the raw path is fine to start.
+
+		// Record the metrics!
+		httpDuration.WithLabelValues(r.Method, path).Observe(duration)
+		httpRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(sw.status)).Inc()
+	})
 }

@@ -1,2 +1,9 @@
 FROM grafana/grafana:12.4.3-security-02
-COPY ./provisioning /etc/grafana/provisioning
+
+# Copy the datasource provisioning
+COPY ./provisioning/datasources /etc/grafana/provisioning/datasources
+
+# Copy the dashboard provisioning config
+COPY ./provisioning/dashboards/dashboard.yml /etc/grafana/provisioning/dashboards/dashboard.yml
+# Copy the actual dashboard JSON file
+COPY ./provisioning/dashboards/go_dashboard.json /var/lib/grafana/dashboards/go_dashboard.json

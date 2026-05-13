@@ -38,7 +38,7 @@ run_playwright_tests:
   stage: e2e_test
   image: mcr.microsoft.com/playwright:v1.59.0-noble
   rules:
-    # 2. JOB RULE: Only run this on git push to main
+    # JOB RULE: Only run this on git push to main
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
   script:
     - cd frontend/tests/ # Or wherever your tests live
@@ -57,6 +57,9 @@ run_playwright_tests:
 build_and_push_images_latest:
   stage: img_push
   image: docker:29.4.1-alpine3.23
+  rules:
+  # JOB RULE: Only run this on git push to main
+  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
   services:
     - docker:29.4.1-dind-alpine3.23
   <<: *aws_oidc_auth

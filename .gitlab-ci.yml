@@ -10,8 +10,6 @@ workflow:
     - when: never
 
 variables:
-  EC2_INSTANCE_ID: "i-04225d1f79be5af51" # CHANGE
-  DB_SECRET: "rds!db-a7edebb5-2111-4fb0-8b74-6f87d4fe76f9" # CHANGE
   AWS_ROLE_ARN: "arn:aws:iam::131912109503:role/GitLab_ECRImagePush_Role"
   AWS_ACCOUNT_ID: "131912109503"
   RDS_ENDPOINT: "todo-db.c962yekmm5ja.us-east-2.rds.amazonaws.com"

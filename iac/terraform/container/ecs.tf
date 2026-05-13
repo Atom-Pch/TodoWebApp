@@ -218,6 +218,10 @@ module "ecs_monitoring" {
         enable   = true
         rollback = false
       }
+
+      task_exec_iam_role_policies = {
+        mno_secret_access = aws_iam_policy.mno_secret.arn
+      }
     }
   }
 
@@ -226,6 +230,27 @@ module "ecs_monitoring" {
   create_task_exec_policy   = true
 
   create_cloudwatch_log_group = false
+}
+
+# For secrets retrieval
+resource "aws_iam_policy" "mno_secret" {
+  name        = "MnOSecretAccess"
+  description = "Allow Monitoring and Observalibity service to access secrets"
+
+  policy = jsonencode({
+    Version : "2012-10-17",
+    Statement : [
+      {
+        Action : [
+          "secretsmanager:GetSecretValue"
+        ],
+        Effect : "Allow",
+        Resource : [
+          "arn:aws:secretsmanager:us-east-2:131912109503:secret:grafana-admin-password-dQuIPo"
+        ]
+      }
+    ]
+  })
 }
 
 # Discovery for monitoring

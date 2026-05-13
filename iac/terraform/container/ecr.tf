@@ -109,7 +109,7 @@ module "prom_repo" {
   source  = "terraform-aws-modules/ecr/aws"
   version = ">= 3.2.0"
 
-  repository_name = "prom-repo"
+  repository_name = "todo-prom-repo"
   repository_type = "private"
 
   repository_image_tag_mutability = var.tag_policy
@@ -157,7 +157,7 @@ module "graf_repo" {
   source  = "terraform-aws-modules/ecr/aws"
   version = ">= 3.2.0"
 
-  repository_name = "graf-repo"
+  repository_name = "todo-graf-repo"
   repository_type = "private"
 
   repository_image_tag_mutability = var.tag_policy

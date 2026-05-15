@@ -42,7 +42,6 @@ run_playwright_tests:
   stage: e2e_test
   image: mcr.microsoft.com/playwright:v1.59.0-noble
   rules:
-    # JOB RULE: Only run this on git push to main
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
   before_script:
     - cd frontend/tests/ # Or wherever your tests live
@@ -57,7 +56,7 @@ run_playwright_tests:
     expire_in: 1 day
 
 # ---------------------------------------------------------
-# STAGE: INITIALIZATION INFRASTRUCTURE
+# STAGE: INITIALIZE INFRASTRUCTURE
 # ---------------------------------------------------------
 initialize_infrastructure:
   stage: infra_init
@@ -74,14 +73,13 @@ initialize_infrastructure:
     - terraform apply -auto-approve
 
 # ---------------------------------------------------------
-# STAGE: BUILD AND PUSH IMAGE TO ECR
+# STAGE: BUILD AND PUSH IMAGES TO ECR
 # ---------------------------------------------------------
 build_and_push_images_latest:
   stage: img_push
   image: docker:29.4.1-alpine3.23
   rules:
-  # JOB RULE: Only run this on git push to main
-  - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
   services:
     - docker:29.4.1-dind-alpine3.23
   <<: *aws_oidc_auth
@@ -89,24 +87,28 @@ build_and_push_images_latest:
     - apk add --no-cache aws-cli
     - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
+    # FRONTEND image
     - docker build --provenance=false -t $FRONTEND_REPO ./frontend/
     - docker tag $FRONTEND_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
 
+    # BACKEND image
     - docker build --provenance=false -t $BACKEND_REPO ./backend/
     - docker tag $BACKEND_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
 
+    # PROMETHEUS image
     - docker build --provenance=false -t $PROMETHEUS_REPO ./mno/prometheus/
     - docker tag $PROMETHEUS_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROMETHEUS_REPO:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROMETHEUS_REPO:latest
 
+    # GRAFANA image
     - docker build --provenance=false -t $GRAFANA_REPO ./mno/grafana/
     - docker tag $GRAFANA_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$GRAFANA_REPO:latest
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$GRAFANA_REPO:latest
 
 # ---------------------------------------------------------
-# STAGE: APP SETUP
+# STAGE: APP SETUP FOR RDS AND ALB
 # ---------------------------------------------------------
 initialize_app:
   stage: app_init
@@ -129,6 +131,7 @@ initialize_app:
     - dpkg -i session-manager-plugin.deb
 
   script:
+    # GET parameters and secrets
     - echo "Fetching ALB DNS from SSM..."
     - export ALB_DNS=$(aws ssm get-parameter --name "/todo/config/alb_dns" --region $AWS_REGION --query "Parameter.Value" --output text)
 
@@ -146,6 +149,7 @@ initialize_app:
     - DB_USER=$(echo $SECRET_JSON | jq -r .username)
     - DB_PASS=$(echo $SECRET_JSON | jq -r .password)
 
+    # UPDATE Porkbun DNS to point to ALB
     - echo "Updating DNS Record..."
     - |
       curl -X POST "https://api.porkbun.com/api/json/v3/dns/editByNameType/onlytodo.xyz/ALIAS" \
@@ -153,7 +157,7 @@ initialize_app:
         -d "{ \"secretapikey\": \"$PORKBUN_SECRET\", \"apikey\": \"$PORKBUN_API\", \"content\": \"$ALB_DNS\", \"ttl\": \"3600\" }" \
         > /dev/null
     - echo "DNS Updated Successfully."
-
+    # INIT SSM to RDS
     - echo "Establishing SSM Tunnel (Background)..."
     - |
       aws ssm start-session \
@@ -163,9 +167,10 @@ initialize_app:
         --region "$AWS_REGION" > /dev/null 2>&1 &
     - TUNNEL_PID=$!
     - echo "Waiting for tunnel to stabilize..."
-    # Loops until it can successfully reach port 5432 on localhost, or gives up after ~30 seconds
+      # Loops until it can successfully reach port 5432 on localhost, or gives up after ~30 seconds
     - for i in {1..15}; do nc -z 127.0.0.1 $DB_PORT && break || sleep 2; done
 
+    # CREATE DB if not exists
     - echo "Checking if Core Table exists in Database..."
     - export PGPASSWORD=$DB_PASS
     - |
@@ -188,7 +193,7 @@ initialize_app:
 
   after_script:
     - echo "Tearing down SSM Tunnel..."
-    # Failsafe cleanup: find whatever process is holding 5432 and kill it
+      # Failsafe cleanup: find whatever process is holding 5432 and kill it
     - PORT_PID=$(lsof -t -i:$DB_PORT || echo "")
     - if [ -n "$PORT_PID" ]; then kill -9 $PORT_PID; fi
 

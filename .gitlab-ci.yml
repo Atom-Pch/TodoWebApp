@@ -1,16 +1,20 @@
 stages:
+  - infra_init
   - e2e_test
   - img_push
-  - db_init
+  - app_init
+  - all_destroy
 
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - when: never
 
 variables:
-  AWS_ROLE_ARN: "arn:aws:iam::131912109503:role/GitLab_ECRImagePush_Role"
+  AWS_ROLE_ARN: "arn:aws:iam::131912109503:role/GitLabCICDRole"
+  PORKBUN_SECRET_ARN: "arn:aws:secretsmanager:us-east-2:131912109503:secret:porkbun-dns-Wby0op"
   AWS_ACCOUNT_ID: "131912109503"
   RDS_ENDPOINT: "todo-db.c962yekmm5ja.us-east-2.rds.amazonaws.com"
   AWS_REGION: "us-east-2"
@@ -40,8 +44,9 @@ run_playwright_tests:
   rules:
     # JOB RULE: Only run this on git push to main
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
-  script:
+  before_script:
     - cd frontend/tests/ # Or wherever your tests live
+  script:
     - npm ci
     - npx playwright install --with-deps
     - npm run test:e2e
@@ -50,6 +55,23 @@ run_playwright_tests:
     paths:
       - frontend/test-results/ # Saves test results so you can view them in GitLab
     expire_in: 1 day
+
+# ---------------------------------------------------------
+# STAGE: INITIALIZATION INFRASTRUCTURE
+# ---------------------------------------------------------
+initialize_infrastructure:
+  stage: infra_init
+  image: hashicorp/terraform:1.14
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DAILY_ACTION == "up"
+  <<: *aws_oidc_auth
+  before_script:
+    - !reference [.aws_oidc_auth, before_script] # Cleanly imports the OIDC token setup
+    - cd iac/terraform/
+  script:
+    - terraform init
+    - terraform apply -auto-approve
 
 # ---------------------------------------------------------
 # STAGE: BUILD AND PUSH IMAGE TO ECR
@@ -84,15 +106,15 @@ build_and_push_images_latest:
     - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$GRAFANA_REPO:latest
 
 # ---------------------------------------------------------
-# STAGE: DB INIT ON NEW RDS
+# STAGE: APP SETUP
 # ---------------------------------------------------------
-initialize_database:
-  stage: db_init
+initialize_app:
+  stage: app_init
   image: ubuntu:22.04
   <<: *aws_oidc_auth
   rules:
-    # JOB RULE: Only run this during your daily manual startup
     - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DAILY_ACTION == "up"
   before_script:
     - !reference [.aws_oidc_auth, before_script] # Cleanly imports the OIDC token setup
     - export DEBIAN_FRONTEND=noninteractive
@@ -107,10 +129,30 @@ initialize_database:
     - dpkg -i session-manager-plugin.deb
 
   script:
+    - echo "Fetching ALB DNS from SSM..."
+    - export ALB_DNS=$(aws ssm get-parameter --name "/todo/config/alb_dns" --region $AWS_REGION --query "Parameter.Value" --output text)
+
+    - echo "Fetching Porkbun Secrets..."
+    - PORKBUN_JSON=$(aws secretsmanager get-secret-value --secret-id $PORKBUN_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
+    - export PORKBUN_API=$(echo $PORKBUN_JSON | jq -r .API_KEY)
+    - export PORKBUN_SECRET=$(echo $PORKBUN_JSON | jq -r .SECRET_KEY)
+
+    - echo "Fetching Dynamic IDs from SSM Parameter Store..."
+    - export EC2_INSTANCE_ID=$(aws ssm get-parameter --name "/todo/config/bastion_ec2_id" --region $AWS_REGION --query "Parameter.Value" --output text)
+    - export DB_SECRET_ARN=$(aws ssm get-parameter --name "/todo/config/db_secret_arn" --region $AWS_REGION --query "Parameter.Value" --output text)
+
     - echo "Fetching DB Credentials via Lookup..."
-    - SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET --region $AWS_REGION --query SecretString --output text)
+    - SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
     - DB_USER=$(echo $SECRET_JSON | jq -r .username)
     - DB_PASS=$(echo $SECRET_JSON | jq -r .password)
+
+    - echo "Updating DNS Record..."
+    - |
+      curl -X POST "https://api.porkbun.com/api/json/v3/dns/editByNameType/onlytodo.xyz/ALIAS" \
+        -H "Content-Type: application/json" \
+        -d "{ \"secretapikey\": \"$PORKBUN_SECRET\", \"apikey\": \"$PORKBUN_API\", \"content\": \"$ALB_DNS\", \"ttl\": \"3600\" }" \
+        > /dev/null
+    - echo "DNS Updated Successfully."
 
     - echo "Establishing SSM Tunnel (Background)..."
     - |
@@ -149,3 +191,21 @@ initialize_database:
     # Failsafe cleanup: find whatever process is holding 5432 and kill it
     - PORT_PID=$(lsof -t -i:$DB_PORT || echo "")
     - if [ -n "$PORT_PID" ]; then kill -9 $PORT_PID; fi
+
+# ---------------------------------------------------------
+# STAGE: DESTROY INFRASTRUCTURE
+# ---------------------------------------------------------
+destroy_infrastructure:
+  stage: all_destroy
+  image: hashicorp/terraform:1.14
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DAILY_ACTION == "down"
+  <<: *aws_oidc_auth
+  before_script:
+    - !reference [.aws_oidc_auth, before_script] # Cleanly imports the OIDC token setup
+    - cd iac/terraform/
+  script:
+    - terraform init
+    - terraform destroy -auto-approve

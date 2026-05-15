@@ -7,7 +7,7 @@ While the application itself is a straightforward To-Do tracker with authenticat
 ---
 
 ## 🌍 **Live Demo:** [https://onlytodo.xyz](https://onlytodo.xyz)
-**⏳ Demo notice:** To conserve AWS credits, the live environment is ephemeral. The infrastructure is automated to be available on a strict schedule and is <ins>*only accessible between 09:30 and 17:30 each day Bangkok time (UTC+7)*</ins>. Outside of these hours, **the entire infrastructure will be detroyed** before being created again the next day. If you want to check it out, please do so in the specified time.
+**⏳ Demo notice:** To conserve AWS credits, the live environment is ephemeral. The infrastructure is automated to be available on a strict schedule and is <ins>*only accessible between 09:30 and 17:30 each day Bangkok time (UTC+7, not counting DNS propagation)*</ins>. Outside of these hours, **the entire infrastructure will be detroyed** before being created again the next day. If you want to check it out, please do so in the specified time.
 
 ## ⚠️ Project Status & Other important Notes
 

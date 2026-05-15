@@ -97,3 +97,9 @@ module "alb" {
     }
   }
 }
+
+resource "aws_ssm_parameter" "alb_dns" {
+  name  = "/todo/config/alb_dns"
+  type  = "String"
+  value = module.alb.dns_name 
+}

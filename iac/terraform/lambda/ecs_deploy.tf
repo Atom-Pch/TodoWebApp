@@ -48,7 +48,9 @@ resource "aws_iam_role_policy" "lambda_ecs_deploy_policy" {
         Resource = [
           var.todo_cluster_arn,
           var.frontend_service_arn,
-          var.backend_service_arn
+          var.backend_service_arn,
+          var.mno_cluster_arn,
+          var.mno_service_arn
         ]
       }
     ]
@@ -67,12 +69,18 @@ resource "aws_lambda_function" "ecs_deploy_lambda" {
 
   environment {
     variables = {
-      # Make sure these match the exact names of your resources!
+      # App stack
       ECS_CLUSTER_NAME      = var.todo_cluster_name
       FRONTEND_REPO_NAME    = var.frontend_repo_name
       FRONTEND_SERVICE_NAME = var.frontend_service_name
       BACKEND_REPO_NAME     = var.backend_repo_name
       BACKEND_SERVICE_NAME  = var.backend_service_name
+
+      # Monitoring Stack
+      MNO_CLUSTER_NAME = var.mno_cluster_name
+      PROM_REPO_NAME   = var.prom_repo_name
+      GRAF_REPO_NAME   = var.graf_repo_name
+      MNO_SERVICE_NAME = var.mno_service_name
     }
   }
 }
@@ -87,10 +95,15 @@ resource "aws_cloudwatch_event_rule" "ecr_push_latest" {
     source      = ["aws.ecr"]
     detail-type = ["ECR Image Action"]
     detail = {
-      "action-type"     = ["PUSH"]
-      "result"          = ["SUCCESS"]
-      "image-tag"       = ["latest"]
-      "repository-name" = [var.frontend_repo_name, var.backend_repo_name]
+      "action-type" = ["PUSH"]
+      "result"      = ["SUCCESS"]
+      "image-tag"   = ["latest"]
+      "repository-name" = [
+        var.frontend_repo_name,
+        var.backend_repo_name,
+        var.prom_repo_name, # NEW: Trigger on Prometheus push
+        var.graf_repo_name
+      ]
     }
   })
 }

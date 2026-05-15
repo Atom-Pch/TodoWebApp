@@ -67,8 +67,8 @@ module "iam" {
   source = "./iam"
 
   rds_secret_arn = module.database.rds_secret_arn
-  s3_env_arn = module.storage.s3_env_arn
-  s3_files_arn = module.storage.s3_files_arn
+  s3_env_arn     = module.storage.s3_env_arn
+  s3_files_arn   = module.storage.s3_files_arn
 }
 
 module "storage" {
@@ -81,18 +81,18 @@ module "storage" {
 module "lambda" {
   source = "./lambda"
 
-  todo_cluster_arn = module.container.todo_cluster_arn
-  todo_cluster_name = module.container.todo_cluster_name
-  frontend_repo_name = module.container.frontend_repo_name
+  todo_cluster_arn      = module.container.todo_cluster_arn
+  todo_cluster_name     = module.container.todo_cluster_name
+  frontend_repo_name    = module.container.frontend_repo_name
   frontend_service_name = module.container.frontend_service_name
-  backend_repo_name = module.container.backend_repo_name
-  backend_service_name = module.container.backend_service_name
-  frontend_service_arn = module.container.frontend_service_arn
-  backend_service_arn = module.container.backend_service_arn
-  prom_repo_name = module.container.prom_repo_name
-  graf_repo_name = module.container.graf_repo_name
-  mno_cluster_arn = module.container.mno_cluster_arn
-  mno_cluster_name = module.container.mno_cluster_name
-  mno_service_arn = module.container.mno_service_arn
-  mno_service_name = module.container.mno_service_name
+  backend_repo_name     = module.container.backend_repo_name
+  backend_service_name  = module.container.backend_service_name
+  frontend_service_arn  = module.container.frontend_service_arn
+  backend_service_arn   = module.container.backend_service_arn
+  prom_repo_name        = module.container.prom_repo_name
+  graf_repo_name        = module.container.graf_repo_name
+  mno_cluster_arn       = module.container.mno_cluster_arn
+  mno_cluster_name      = module.container.mno_cluster_name
+  mno_service_arn       = module.container.mno_service_arn
+  mno_service_name      = module.container.mno_service_name
 }

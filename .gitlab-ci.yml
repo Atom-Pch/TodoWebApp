@@ -59,7 +59,9 @@ run_playwright_tests:
 # ---------------------------------------------------------
 initialize_infrastructure:
   stage: infra_init
-  image: hashicorp/terraform:1.14
+  image: 
+    name: hashicorp/terraform:1.14
+    entrypoint: [""]
   rules:
     - if: $CI_PIPELINE_SOURCE == "web" # TEST
     - if: $CI_PIPELINE_SOURCE == "schedule" && $DAILY_ACTION == "up"
@@ -203,7 +205,9 @@ initialize_app:
 # ---------------------------------------------------------
 destroy_infrastructure:
   stage: all_destroy
-  image: hashicorp/terraform:1.14
+  image: 
+    name: hashicorp/terraform:1.14
+    entrypoint: [""]
   rules:
     - if: $CI_PIPELINE_SOURCE == "web" # TEST
     # - if: $CI_PIPELINE_SOURCE == "schedule" && $DAILY_ACTION == "down"

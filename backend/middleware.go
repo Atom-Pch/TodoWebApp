@@ -85,7 +85,7 @@ func (app *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := cookie.Value
-		jwtSecret := []byte(os.Getenv("JWT_SECRET"))
+		jwtSecret := []byte(os.Getenv("BACKEND_JWT_STRING"))
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return jwtSecret, nil

@@ -13,21 +13,18 @@ variable "private_subnets" {
 variable "alb_tg" {
   description = "ALB target group arn"
 }
-variable "todo_env_policy" {
-  description = "IAM policy for S3 access env"
-}
 variable "todo_files_policy" {
   description = "IAM policy for S3 access files"
 }
 variable "s3_files_name" {
   description = "name of todo files S3 bucket"
 }
-variable "s3_env_arn" {
-  description = "ARN of todo env S3 bucket"
-}
 variable "db_address" {
   description = "address of todo RDS"
 }
 variable "rds_secret_arn" {
   description = "RDS secrets ARN from Secret Manager"
+}
+variable "todo_app_secret_arn" {
+  description = "ARN of app secrets"
 }

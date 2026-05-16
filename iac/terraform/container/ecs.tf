@@ -87,15 +87,16 @@ module "ecs" {
             }
           ]
 
-          secrets = [{
-            name      = "DB_PASS"
-            valueFrom = "${var.rds_secret_arn}:password::"
-          }]
-
-          environmentFiles = [{
-            value = "${var.s3_env_arn}/.env"
-            type  = "s3"
-          }]
+          secrets = [
+            {
+              name      = "DB_PASS"
+              valueFrom = "${var.rds_secret_arn}:password::"
+            },
+            {
+              name      = "BACKEND_JWT_STRING"
+              valueFrom = "${var.todo_app_secret_arn}:BACKEND_JWT_STRING::"
+            }
+          ]
         }
       }
 
@@ -113,10 +114,6 @@ module "ecs" {
 
       tasks_iam_role_policies = {
         files_policy = var.todo_files_policy
-      }
-
-      task_exec_iam_role_policies = {
-        env_policy = var.todo_env_policy
       }
 
       service_registries = {
@@ -181,7 +178,7 @@ module "ecs_monitoring" {
               value = "6060"
             },
             {
-              name = "GF_AUTH_ANONYMOUS_ENABLED"
+              name  = "GF_AUTH_ANONYMOUS_ENABLED"
               value = "true"
             },
             {
@@ -196,7 +193,7 @@ module "ecs_monitoring" {
 
           secrets = [{
             name      = "GF_SECURITY_ADMIN_PASSWORD"
-            valueFrom = "arn:aws:secretsmanager:us-east-2:131912109503:secret:grafana-admin-password-dQuIPo:GF_SECURITY_ADMIN_PASSWORD::"
+            valueFrom = "arn:aws:secretsmanager:us-east-2:131912109503:secret:todo-app-secrets-14Gg8G:GF_SECURITY_ADMIN_PASSWORD::"
           }]
         }
       }
@@ -246,7 +243,7 @@ resource "aws_iam_policy" "mno_secret" {
         ],
         Effect : "Allow",
         Resource : [
-          "arn:aws:secretsmanager:us-east-2:131912109503:secret:grafana-admin-password-dQuIPo"
+          "${var.todo_app_secret_arn}"
         ]
       }
     ]
@@ -274,4 +271,3 @@ resource "aws_service_discovery_service" "backend" {
     routing_policy = "MULTIVALUE"
   }
 }
-

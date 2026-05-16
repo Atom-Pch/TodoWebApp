@@ -30,24 +30,3 @@ resource "aws_s3_bucket_cors_configuration" "this" {
     max_age_seconds = 3600
   }
 }
-
-module "env_bucket" {
-  source  = "terraform-aws-modules/s3-bucket/aws"
-  version = ">= 5.12.0"
-
-  bucket           = format("todo-env-%s-%s-an", data.aws_caller_identity.current.account_id, var.aws_region)
-  bucket_namespace = "account-regional"
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-
-  force_destroy = true
-}
-
-resource "aws_s3_object" "backend_env" {
-  bucket = module.env_bucket.s3_bucket_id
-  key    = ".env"
-  source = "${path.module}/.env"
-}

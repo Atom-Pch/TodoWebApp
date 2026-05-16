@@ -61,19 +61,17 @@ module "container" {
   vpc               = module.networks.vpc
   private_subnets   = module.networks.private_subnets
   alb_tg            = module.load_balancer.alb_tg
-  todo_env_policy   = module.iam.todo_env_policy
   todo_files_policy = module.iam.todo_files_policy
   s3_files_name     = module.storage.s3_files_name
-  s3_env_arn        = module.storage.s3_env_arn
   db_address        = module.database.db_address
   rds_secret_arn    = module.database.rds_secret_arn
+  todo_app_secret_arn = var.todo-app-secret-arn
 }
 
 module "iam" {
   source = "./iam"
 
   rds_secret_arn = module.database.rds_secret_arn
-  s3_env_arn     = module.storage.s3_env_arn
   s3_files_arn   = module.storage.s3_files_arn
 }
 

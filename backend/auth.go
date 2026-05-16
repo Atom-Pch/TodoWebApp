@@ -60,7 +60,7 @@ func (app *App) loginUser(w http.ResponseWriter, r *http.Request) {
 		"exp":     time.Now().Add(time.Hour * 24).Unix(),
 	})
 
-	jwtSecret := os.Getenv("JWT_SECRET")
+	jwtSecret := os.Getenv("BACKEND_JWT_STRING")
 	tokenString, _ := token.SignedString([]byte(jwtSecret))
 
 	http.SetCookie(w, &http.Cookie{
@@ -94,7 +94,7 @@ func (app *App) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
+	jwtSecret := []byte(os.Getenv("BACKEND_JWT_STRING"))
 	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (any, error) {
 		return jwtSecret, nil
 	})

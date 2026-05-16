@@ -7,6 +7,14 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  backend "s3" {
+    bucket = "todo-terraform-131912109503-us-east-2-an"
+    key = "todo/terraform.tfstate"
+    region = "us-east-2"
+    encrypt = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

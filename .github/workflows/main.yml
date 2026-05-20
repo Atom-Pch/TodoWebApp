@@ -1,0 +1,254 @@
+name: Ephemeral AWS CI/CD Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: "30 2 * * *" # Morning: 9:30 AM BKK (Startup)
+    - cron: "30 10 * * *" # Evening: 17:30 PM BKK (Teardown)
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Manual Action to perform"
+        required: true
+        default: "startup"
+        type: choice
+        options:
+          - startup
+          - teardown
+
+env:
+  AWS_ROLE_ARN: "arn:aws:iam::131912109503:role/GitHubActionsRole"
+  PORKBUN_SECRET_ARN: "arn:aws:secretsmanager:us-east-2:131912109503:secret:todo-app-secrets-14Gg8G"
+  AWS_ACCOUNT_ID: "131912109503"
+  RDS_ENDPOINT: "todo-db.c962yekmm5ja.us-east-2.rds.amazonaws.com"
+  AWS_REGION: "us-east-2"
+  DB_NAME: "todo_db"
+  DB_PORT: "5432"
+  SQL_FILE: "database/init.sql"
+  CORE_TABLE_NAME: "users"
+  FRONTEND_REPO: "todo-frontend-repo"
+  BACKEND_REPO: "todo-backend-repo"
+  PROMETHEUS_REPO: "todo-prom-repo"
+  GRAFANA_REPO: "todo-graf-repo"
+
+permissions:
+  id-token: write # Required for requesting the JWT for AWS OIDC
+  contents: read # Required for actions/checkout
+
+jobs:
+  # ---------------------------------------------------------
+  # STAGE: E2E TEST (Runs strictly on Push)
+  # ---------------------------------------------------------
+  run_playwright_tests:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies and run tests
+        working-directory: frontend/tests/
+        run: |
+          npm ci
+          npx playwright install --with-deps
+          npm run test:e2e
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: frontend/test-results/
+          retention-days: 1
+
+  # ---------------------------------------------------------
+  # STAGE: INFRA INIT (Runs on Morning Schedule or Manual Startup)
+  # ---------------------------------------------------------
+  initialize_infrastructure:
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '30 2 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'startup')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.0"
+
+      - name: Terraform Init & Apply
+        working-directory: iac/terraform/
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+  # ---------------------------------------------------------
+  # STAGE: BUILD & PUSH IMAGES
+  # ---------------------------------------------------------
+  build_and_push_images:
+    # Runs on Push (if tests pass) OR Schedule (Morning) OR Manual (Startup)
+    needs: [run_playwright_tests]
+    if: |
+      always() && 
+      (needs.run_playwright_tests.result == 'success' || needs.run_playwright_tests.result == 'skipped') &&
+      (github.event_name == 'push' || 
+       (github.event_name == 'schedule' && github.event.schedule == '30 2 * * *') ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'startup'))
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Images
+        run: |
+          # FRONTEND
+          docker build --provenance=false -t $FRONTEND_REPO ./frontend/
+          docker tag $FRONTEND_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
+
+          # BACKEND
+          docker build --provenance=false -t $BACKEND_REPO ./backend/
+          docker tag $BACKEND_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
+
+          # PROMETHEUS
+          docker build --provenance=false -t $PROMETHEUS_REPO ./mno/prometheus/
+          docker tag $PROMETHEUS_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROMETHEUS_REPO:latest
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROMETHEUS_REPO:latest
+
+          # GRAFANA
+          docker build --provenance=false -t $GRAFANA_REPO ./mno/grafana/
+          docker tag $GRAFANA_REPO:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$GRAFANA_REPO:latest
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$GRAFANA_REPO:latest
+
+  # ---------------------------------------------------------
+  # STAGE: APP SETUP
+  # ---------------------------------------------------------
+  initialize_app:
+    needs: [initialize_infrastructure]
+    if: |
+      always() && 
+      (needs.initialize_infrastructure.result == 'success' || needs.initialize_infrastructure.result == 'skipped') &&
+      ((github.event_name == 'schedule' && github.event.schedule == '30 2 * * *') ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'startup'))
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update && sudo apt-get install -y jq postgresql-client netcat-openbsd lsof
+          # AWS CLI v2 is already pre-installed on GitHub ubuntu-22.04 runners!
+          curl -sL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+          sudo dpkg -i session-manager-plugin.deb
+
+      - name: Update DNS and Initialize Database
+        run: |
+          echo "Fetching ALB DNS from SSM..."
+          export ALB_DNS=$(aws ssm get-parameter --name "/todo/config/alb_dns" --region $AWS_REGION --query "Parameter.Value" --output text)
+
+          echo "Fetching Porkbun Secrets..."
+          PORKBUN_JSON=$(aws secretsmanager get-secret-value --secret-id $PORKBUN_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
+          export PORKBUN_API=$(echo $PORKBUN_JSON | jq -r .PORKBUN_API_KEY)
+          export PORKBUN_SECRET=$(echo $PORKBUN_JSON | jq -r .PORKBUN_SECRET_KEY)
+
+          echo "Fetching Dynamic IDs from SSM Parameter Store..."
+          export EC2_INSTANCE_ID=$(aws ssm get-parameter --name "/todo/config/bastion_ec2_id" --region $AWS_REGION --query "Parameter.Value" --output text)
+          export DB_SECRET_ARN=$(aws ssm get-parameter --name "/todo/config/db_secret_arn" --region $AWS_REGION --query "Parameter.Value" --output text)
+
+          echo "Fetching DB Credentials via Lookup..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
+          DB_USER=$(echo $SECRET_JSON | jq -r .username)
+          DB_PASS=$(echo $SECRET_JSON | jq -r .password)
+
+          echo "Updating DNS Record for ALB..."
+          curl -X POST "https://api.porkbun.com/api/json/v3/dns/editByNameType/onlytodo.xyz/ALIAS" \
+            -H "Content-Type: application/json" \
+            -d "{ \"secretapikey\": \"$PORKBUN_SECRET\", \"apikey\": \"$PORKBUN_API\", \"content\": \"$ALB_DNS\", \"ttl\": \"3600\" }" \
+            > /dev/null
+          echo "ALB DNS Updated Successfully."
+
+          echo "Establishing SSM Tunnel (Background)..."
+          aws ssm start-session \
+            --target "$EC2_INSTANCE_ID" \
+            --document-name AWS-StartPortForwardingSessionToRemoteHost \
+            --parameters host="$RDS_ENDPOINT",portNumber="$DB_PORT",localPortNumber="$DB_PORT" \
+            --region "$AWS_REGION" > /dev/null 2>&1 &
+
+          echo "Waiting for tunnel to stabilize..."
+          for i in {1..15}; do nc -z 127.0.0.1 $DB_PORT && break || sleep 2; done
+
+          echo "Checking if Core Table exists in Database..."
+          export PGPASSWORD=$DB_PASS
+          TABLE_EXISTS=$(psql -h 127.0.0.1 -p $DB_PORT -U "$DB_USER" -d "$DB_NAME" -tAc "
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_schema = 'public' 
+              AND table_name = '$CORE_TABLE_NAME'
+            );
+          ")
+
+          if [ "$TABLE_EXISTS" = "f" ]; then
+            echo "Database was empty. Applying initialization script..."
+            psql -h 127.0.0.1 -p $DB_PORT -U "$DB_USER" -d "$DB_NAME" -f $SQL_FILE
+            echo "Initialization script applied successfully."
+          else
+            echo "Table '$CORE_TABLE_NAME' found. Database is already initialized. Skipping."
+          fi
+
+      - name: Teardown SSM Tunnel (Failsafe)
+        if: always() # Equivalent to GitLab's after_script
+        run: |
+          echo "Tearing down SSM Tunnel..."
+          PORT_PID=$(lsof -t -i:$DB_PORT || echo "")
+          if [ -n "$PORT_PID" ]; then sudo kill -9 $PORT_PID; fi
+
+  # ---------------------------------------------------------
+  # STAGE: INFRA DESTROY (Runs on Evening Schedule or Manual Teardown)
+  # ---------------------------------------------------------
+  destroy_infrastructure:
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '30 10 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'teardown')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.0"
+
+      - name: Terraform Destroy
+        working-directory: iac/terraform/
+        run: |
+          terraform init
+          terraform destroy -auto-approve

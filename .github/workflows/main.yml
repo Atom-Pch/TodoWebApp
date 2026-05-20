@@ -57,8 +57,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
-          path: frontend/test-results/
+          name: test-results
+          path: frontend/
           retention-days: 1
 
   # ---------------------------------------------------------

@@ -114,6 +114,9 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Making sure Infra exists
+        run: sleep 15s
+
       - name: Build and Push Images
         run: |
           # FRONTEND

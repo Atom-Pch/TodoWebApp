@@ -62,9 +62,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Making sure Infra exists
-        run: sleep 15s
-
       - name: Build and Push Images
         run: |
           docker build --provenance=false -t $FRONTEND_REPO ./frontend/
@@ -102,16 +99,8 @@ jobs:
           curl -sL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
           sudo dpkg -i session-manager-plugin.deb
 
-      - name: Update DNS and Initialize Database
+      - name: Initialize Database
         run: |
-          echo "Fetching ALB DNS from SSM..."
-          export ALB_DNS=$(aws ssm get-parameter --name "/todo/config/alb_dns" --region $AWS_REGION --query "Parameter.Value" --output text)
-
-          echo "Fetching Porkbun Secrets..."
-          PORKBUN_JSON=$(aws secretsmanager get-secret-value --secret-id $PORKBUN_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
-          export PORKBUN_API=$(echo $PORKBUN_JSON | jq -r .PORKBUN_API_KEY)
-          export PORKBUN_SECRET=$(echo $PORKBUN_JSON | jq -r .PORKBUN_SECRET_KEY)
-
           echo "Fetching Dynamic IDs from SSM Parameter Store..."
           export EC2_INSTANCE_ID=$(aws ssm get-parameter --name "/todo/config/bastion_ec2_id" --region $AWS_REGION --query "Parameter.Value" --output text)
           export DB_SECRET_ARN=$(aws ssm get-parameter --name "/todo/config/db_secret_arn" --region $AWS_REGION --query "Parameter.Value" --output text)
@@ -120,13 +109,6 @@ jobs:
           SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
           DB_USER=$(echo $SECRET_JSON | jq -r .username)
           DB_PASS=$(echo $SECRET_JSON | jq -r .password)
-
-          echo "Updating DNS Record for ALB..."
-          curl -X POST "https://api.porkbun.com/api/json/v3/dns/editByNameType/onlytodo.xyz/ALIAS" \
-            -H "Content-Type: application/json" \
-            -d "{ \"secretapikey\": \"$PORKBUN_SECRET\", \"apikey\": \"$PORKBUN_API\", \"content\": \"$ALB_DNS\", \"ttl\": \"3600\" }" \
-            > /dev/null
-          echo "ALB DNS Updated Successfully."
 
           echo "Establishing SSM Tunnel (Background)..."
           aws ssm start-session \
@@ -156,3 +138,19 @@ jobs:
             echo "Table '$CORE_TABLE_NAME' found. Database is already initialized. Skipping."
           fi
 
+      - name: Update Porkbun DNS 
+        run: |
+          echo "Fetching ALB DNS from SSM..."
+          export ALB_DNS=$(aws ssm get-parameter --name "/todo/config/alb_dns" --region $AWS_REGION --query "Parameter.Value" --output text)
+
+          echo "Fetching Porkbun Secrets..."
+          PORKBUN_JSON=$(aws secretsmanager get-secret-value --secret-id $PORKBUN_SECRET_ARN --region $AWS_REGION --query SecretString --output text)
+          export PORKBUN_API=$(echo $PORKBUN_JSON | jq -r .PORKBUN_API_KEY)
+          export PORKBUN_SECRET=$(echo $PORKBUN_JSON | jq -r .PORKBUN_SECRET_KEY)
+
+          echo "Updating DNS Record for ALB..."
+          curl -X POST "https://api.porkbun.com/api/json/v3/dns/editByNameType/onlytodo.xyz/ALIAS" \
+            -H "Content-Type: application/json" \
+            -d "{ \"secretapikey\": \"$PORKBUN_SECRET\", \"apikey\": \"$PORKBUN_API\", \"content\": \"$ALB_DNS\", \"ttl\": \"3600\" }" \
+            > /dev/null
+          echo "ALB DNS Updated Successfully."
